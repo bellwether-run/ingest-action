@@ -1,0 +1,68 @@
+name: Bellwether Ingest
+description: >-
+  Forward failed test runs (JUnit XML, Playwright JSON) to Bellwether for
+  classification. Runs as a follow-up workflow that listens for the
+  `workflow_run: completed` event from your existing CI workflows, downloads
+  their artifacts, and uploads structured test results to the Bellwether API.
+branding:
+  icon: bell
+  color: orange
+
+inputs:
+  api_url:
+    description: >-
+      Bellwether API base URL. Defaults to the production endpoint. Override
+      only when self-hosting or pointing at a non-prod environment.
+    required: false
+    default: https://api.bellwether.run
+  bellwether_token:
+    description: >-
+      Per-repo Bellwether API token (Bearer auth). Generate one at
+      https://bellwether.run/dashboard/integrations and store as a repo
+      secret (e.g., `BELLWETHER_TOKEN`).
+    required: true
+  github_token:
+    description: >-
+      GitHub token with `actions: read` permission, used to list and download
+      artifacts from the triggering workflow run. Defaults to the workflow's
+      own `github.token` which is sufficient when run from the same repo
+      via the `workflow_run` event.
+    required: false
+    default: ${{ github.token }}
+  workflow_run_id:
+    description: >-
+      The numeric ID of the workflow run whose artifacts should be ingested.
+      Defaults to the triggering `workflow_run` event's run id; override
+      only if you're invoking the action outside a `workflow_run` trigger.
+    required: false
+    default: ${{ github.event.workflow_run.id }}
+  repo:
+    description: >-
+      The `owner/name` slug of the repo whose results are being ingested.
+      Defaults to the workflow's own repo.
+    required: false
+    default: ${{ github.repository }}
+
+outputs:
+  uploads:
+    description: Number of test reports successfully forwarded to Bellwether.
+    value: ${{ steps.ingest.outputs.uploads }}
+  skipped:
+    description: Number of artifacts that contained no recognizable test report.
+    value: ${{ steps.ingest.outputs.skipped }}
+
+runs:
+  using: composite
+  steps:
+    - id: ingest
+      shell: bash
+      env:
+        BELLWETHER_API_URL: ${{ inputs.api_url }}
+        BELLWETHER_TOKEN: ${{ inputs.bellwether_token }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        WORKFLOW_RUN_ID: ${{ inputs.workflow_run_id }}
+        BELLWETHER_REPO: ${{ inputs.repo }}
+        HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      run: |
+        ${{ github.action_path }}/scripts/ingest.sh
